@@ -161,12 +161,12 @@ def _run_model_inference(pil_image: Image.Image) -> str:
     ]
 
     try:
-        # Preferred: generate_cxr_repsonse with official prompt template
-        if hasattr(model, "generate_cxr_repsonse"):
-            return model.generate_cxr_repsonse(chat=chat, pil_image=pil_image, temperature=0, top_p=1)
-        # Fallback: direct write_radiologic_report helper
+        # Preferred: official high-level helper
         if hasattr(model, "write_radiologic_report"):
             return model.write_radiologic_report(pil_image)
+        # Fallback: custom chat interface (note: argument is image=, not pil_image=)
+        if hasattr(model, "generate_cxr_repsonse"):
+            return model.generate_cxr_repsonse(chat=chat, image=pil_image, temperature=0.2, top_p=0.8)
         raise RuntimeError("Model does not expose expected inference methods.")
     except Exception as exc:
         raise HTTPException(

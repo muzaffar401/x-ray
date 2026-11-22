@@ -69,9 +69,9 @@ chat = [
 
 response = model.generate_cxr_repsonse(
     chat=chat,
-    pil_image=cxr_image,
-    temperature=0,
-    top_p=1
+    image=cxr_image,
+    temperature=0.2,
+    top_p=0.8
 )
 print(response)
 ```
