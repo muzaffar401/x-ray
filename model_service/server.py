@@ -31,7 +31,19 @@ def load_cxr_model() -> None:
         return
 
     import torch
+    import transformers
     from transformers import AutoModel
+
+    # Compatibility patch: CXR-LLaVA's remote code passes add_special_tokens=False
+    # to LlamaTokenizer.from_pretrained, which newer transformers versions reject as a method conflict.
+    if hasattr(transformers, "LlamaTokenizer"):
+        _orig_llama_from_pretrained = transformers.LlamaTokenizer.from_pretrained
+
+        def _patched_llama_from_pretrained(*args, **kwargs):
+            kwargs.pop("add_special_tokens", None)
+            return _orig_llama_from_pretrained(*args, **kwargs)
+
+        transformers.LlamaTokenizer.from_pretrained = _patched_llama_from_pretrained
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # Load model using official repository identifier and trust_remote_code=True
