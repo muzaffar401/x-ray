@@ -2,6 +2,7 @@
 from app.config import settings
 from app.services.engines.base import ReportEngine
 from app.services.engines.mock import MockEngine
+from app.services.engines.real import RealEngine
 
 
 def get_engine() -> ReportEngine:
@@ -9,9 +10,9 @@ def get_engine() -> ReportEngine:
     if engine_type == "mock":
         return MockEngine()
     elif engine_type == "real":
-        raise NotImplementedError("Real engine is added later")
+        return RealEngine()
     else:
         raise ValueError(f"Unknown engine type '{settings.ENGINE}'. Supported types: 'mock', 'real'.")
 
 
-__all__ = ["ReportEngine", "MockEngine", "get_engine"]
+__all__ = ["ReportEngine", "MockEngine", "RealEngine", "get_engine"]
