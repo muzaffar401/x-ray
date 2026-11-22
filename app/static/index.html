@@ -2,9 +2,142 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>XRay Report AI</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h1>XRay Report AI</h1>
+
+  <!-- Mandatory Safety Banner -->
+  <div id="safety-banner" class="safety-banner">
+    ⚠️ <strong>AI-generated DRAFT. Must be reviewed and approved by a qualified radiologist. Not a final diagnosis.</strong>
+  </div>
+
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <span class="brand-icon">🫁</span>
+        <h1>XRay Report AI</h1>
+      </div>
+      <p class="tagline">Chest Radiograph Draft Report Assistant</p>
+    </div>
+  </header>
+
+  <main class="main-container">
+    
+    <!-- Top Alert Messages -->
+    <div id="alert-box" class="alert-box hidden"></div>
+
+    <!-- Two-column workspace -->
+    <div class="workspace-grid">
+      
+      <!-- Left Column: Upload & Image Preview -->
+      <section class="card upload-card">
+        <h2 class="card-title">1. Upload Chest X-Ray</h2>
+
+        <div id="dropzone" class="dropzone">
+          <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.dcm" class="file-input">
+          <div class="dropzone-content">
+            <div class="dropzone-icon">📁</div>
+            <p class="dropzone-text"><strong>Drag &amp; drop your X-ray here</strong></p>
+            <p class="dropzone-subtext">Supports DICOM (.dcm), PNG (.png), and JPEG (.jpg)</p>
+            <button type="button" id="browse-btn" class="btn btn-secondary">Browse Files</button>
+          </div>
+        </div>
+
+        <!-- Upload loading state -->
+        <div id="upload-loading" class="loading-container hidden">
+          <div class="spinner"></div>
+          <p>Processing image and generating AI draft report...</p>
+        </div>
+
+        <!-- Image Preview Card -->
+        <div id="preview-section" class="preview-section hidden">
+          <div class="preview-header">
+            <h3>X-Ray Preview</h3>
+            <span id="preview-meta" class="preview-meta"></span>
+          </div>
+          <div class="image-wrapper">
+            <img id="xray-image" src="" alt="Chest X-Ray Preview" class="xray-img">
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Findings, Impression & Approval -->
+      <section class="card review-card">
+        <div class="review-header">
+          <h2 class="card-title">2. Review &amp; Edit Draft</h2>
+          <div class="badges-wrapper">
+            <span id="mock-badge" class="badge badge-mock hidden">MOCK - not a real AI result</span>
+            <span id="status-badge" class="badge badge-draft hidden">Draft</span>
+          </div>
+        </div>
+
+        <div id="no-report-placeholder" class="placeholder-text">
+          Upload an X-ray on the left or select a previous report below to start reviewing.
+        </div>
+
+        <form id="report-form" class="report-form hidden">
+          
+          <div class="form-group">
+            <label for="findings-input" class="form-label">
+              <strong>Findings</strong>
+              <span class="field-hint">Detailed anatomical observations</span>
+            </label>
+            <textarea id="findings-input" rows="7" class="form-textarea" placeholder="Findings will appear here..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="impression-input" class="form-label">
+              <strong>Impression</strong>
+              <span class="field-hint">Summary conclusion &amp; recommendations</span>
+            </label>
+            <textarea id="impression-input" rows="4" class="form-textarea" placeholder="Impression will appear here..."></textarea>
+          </div>
+
+          <div class="action-buttons">
+            <button type="button" id="save-btn" class="btn btn-primary">Save edits</button>
+            <button type="button" id="approve-btn" class="btn btn-success">Approve report</button>
+          </div>
+
+          <p id="approved-notice" class="approved-notice hidden">
+            ✓ This report is approved and locked. Edits are no longer allowed.
+          </p>
+        </form>
+      </section>
+
+    </div>
+
+    <!-- Bottom Section: Previous Reports -->
+    <section class="card history-card">
+      <div class="history-header">
+        <h2 class="card-title">Previous Reports</h2>
+        <button type="button" id="refresh-history-btn" class="btn btn-sm btn-outline">Refresh</button>
+      </div>
+
+      <div class="table-container">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>File Name</th>
+              <th>Created</th>
+              <th>Status</th>
+              <th>Engine</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="history-table-body">
+            <tr>
+              <td colspan="6" class="text-center text-muted">Loading previous reports...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
 </body>
 </html>
