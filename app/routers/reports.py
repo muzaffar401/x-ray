@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ from app.security import get_current_user
 from app.services.audit import log_action
 from app.services.engines import get_engine
 from app.services.image_utils import to_png, validate_upload
+from app.services.pdf_export import generate_report_pdf
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -203,3 +204,38 @@ def approve_report(
     db.refresh(report)
     log_action(db, action="approved", user_id=current_user.id, report_id=report.id, details="Report approved")
     return report
+
+
+@router.get("/{report_id}/pdf")
+def export_report_pdf(
+    report_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report with id {report_id} not found.",
+        )
+
+    # PDF export is strictly forbidden for unapproved draft reports
+    if report.status != "approved":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="PDF export is available only for approved reports. Please review and approve the report first.",
+        )
+
+    # Resolve reporting physician's display name
+    creator = db.query(User).filter(User.id == report.created_by).first() if report.created_by else None
+    approver_name = creator.username if creator else current_user.username
+
+    pdf_bytes = generate_report_pdf(report, approver_username=approver_name)
+
+    log_action(db, action="pdf_exported", user_id=current_user.id, report_id=report.id, details="Report PDF exported")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename=report_{report.id}.pdf"},
+    )

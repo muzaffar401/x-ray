@@ -47,6 +47,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const impressionInput = document.getElementById("impression-input");
   const saveBtn = document.getElementById("save-btn");
   const approveBtn = document.getElementById("approve-btn");
+  const downloadPdfBtn = document.getElementById("download-pdf-btn");
   const approvedNotice = document.getElementById("approved-notice");
 
   const mockBadge = document.getElementById("mock-badge");
@@ -176,6 +177,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       saveBtn.disabled = true;
       approveBtn.disabled = true;
       approvedNotice.classList.remove("hidden");
+
+      // Show PDF download button only after approval
+      downloadPdfBtn.href = `/api/reports/${report.id}/pdf`;
+      downloadPdfBtn.classList.remove("hidden");
     } else {
       statusBadge.textContent = "Draft";
       statusBadge.className = "badge badge-draft";
@@ -185,6 +190,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       saveBtn.disabled = !canEdit;
       approveBtn.disabled = !canEdit;
       approvedNotice.classList.add("hidden");
+
+      // Hide PDF download button in draft state
+      downloadPdfBtn.classList.add("hidden");
+      downloadPdfBtn.href = "#";
 
       if (!canEdit) {
         showAlert("Viewing report created by another doctor (read-only).", "error");
