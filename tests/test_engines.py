@@ -1,11 +1,8 @@
 # Tests for report engine interface, mock engine, real engine, and engine factory.
-import io
-import json
-import urllib.error
-import urllib.request
 from typing import Any
 import pytest
 from fastapi import HTTPException
+import httpx
 
 from app.services.engines.base import ReportEngine
 from app.services.engines.mock import MockEngine
@@ -63,36 +60,29 @@ def test_get_engine_invalid_raises_value_error(monkeypatch):
         get_engine()
 
 
-class MockHttpResponse:
-    def __init__(self, data: dict[str, Any], status: int = 200):
-        self._content = json.dumps(data).encode("utf-8")
-        self.status = status
+class MockHttpxResponse:
+    def __init__(self, data: dict[str, Any], status_code: int = 200):
+        self._data = data
+        self.status_code = status_code
+        self.is_error = status_code >= 400
 
-    def read(self) -> bytes:
-        return self._content
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        pass
+    def json(self) -> dict[str, Any]:
+        return self._data
 
 
 def test_real_engine_success_and_headers(monkeypatch):
-    captured_req = None
-    captured_timeout = None
+    captured_kwargs = {}
 
-    def fake_urlopen(req, timeout=None):
-        nonlocal captured_req, captured_timeout
-        captured_req = req
-        captured_timeout = timeout
-        return MockHttpResponse({
+    def fake_post(self, url, **kwargs):
+        nonlocal captured_kwargs
+        captured_kwargs = kwargs
+        return MockHttpxResponse({
             "findings": "Normal bilateral lungs.",
             "impression": "",
             "model_name": "ECOFRI/CXR-LLAVA-v2"
         })
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
 
     engine = RealEngine(service_url="http://fake-model-service.com", api_key="secret-key-123")
     result = engine.generate(b"sample_png_bytes")
@@ -102,26 +92,16 @@ def test_real_engine_success_and_headers(monkeypatch):
     assert result["engine_name"] == "ECOFRI/CXR-LLAVA-v2"
     assert result["is_mock"] is False
 
-    # Check timeout is 180 seconds
-    assert captured_timeout == 180.0
-
-    # Check required headers
-    assert captured_req.get_header("Ngrok-skip-browser-warning") == "1"
-    assert captured_req.get_header("X-api-key") == "secret-key-123"
+    headers = captured_kwargs.get("headers", {})
+    assert headers.get("ngrok-skip-browser-warning") == "1"
+    assert headers.get("X-API-Key") == "secret-key-123"
 
 
 def test_real_engine_503_maps_to_friendly_502(monkeypatch):
-    def fake_urlopen(req, timeout=None):
-        fp = io.BytesIO(b'{"detail":"OOM"}')
-        raise urllib.error.HTTPError(
-            url=req.full_url,
-            code=503,
-            msg="Service Unavailable",
-            hdrs={},
-            fp=fp
-        )
+    def fake_post(self, url, **kwargs):
+        return MockHttpxResponse({"detail": "OOM"}, status_code=503)
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
 
     engine = RealEngine(service_url="http://fake-model-service.com", api_key="test-key")
     with pytest.raises(HTTPException) as exc_info:
@@ -132,17 +112,10 @@ def test_real_engine_503_maps_to_friendly_502(monkeypatch):
 
 
 def test_real_engine_504_maps_to_friendly_502(monkeypatch):
-    def fake_urlopen(req, timeout=None):
-        fp = io.BytesIO(b'{"detail":"Gateway Timeout"}')
-        raise urllib.error.HTTPError(
-            url=req.full_url,
-            code=504,
-            msg="Gateway Timeout",
-            hdrs={},
-            fp=fp
-        )
+    def fake_post(self, url, **kwargs):
+        return MockHttpxResponse({"detail": "Gateway Timeout"}, status_code=504)
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
 
     engine = RealEngine(service_url="http://fake-model-service.com", api_key="test-key")
     with pytest.raises(HTTPException) as exc_info:
@@ -153,17 +126,10 @@ def test_real_engine_504_maps_to_friendly_502(monkeypatch):
 
 
 def test_real_engine_401_maps_to_friendly_502(monkeypatch):
-    def fake_urlopen(req, timeout=None):
-        fp = io.BytesIO(b'{"detail":"Unauthorized"}')
-        raise urllib.error.HTTPError(
-            url=req.full_url,
-            code=401,
-            msg="Unauthorized",
-            hdrs={},
-            fp=fp
-        )
+    def fake_post(self, url, **kwargs):
+        return MockHttpxResponse({"detail": "Unauthorized"}, status_code=401)
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
 
     engine = RealEngine(service_url="http://fake-model-service.com", api_key="test-key")
     with pytest.raises(HTTPException) as exc_info:
@@ -174,17 +140,10 @@ def test_real_engine_401_maps_to_friendly_502(monkeypatch):
 
 
 def test_real_engine_other_status_maps_to_friendly_502(monkeypatch):
-    def fake_urlopen(req, timeout=None):
-        fp = io.BytesIO(b'{"detail":"Internal Server Error"}')
-        raise urllib.error.HTTPError(
-            url=req.full_url,
-            code=500,
-            msg="Internal Server Error",
-            hdrs={},
-            fp=fp
-        )
+    def fake_post(self, url, **kwargs):
+        return MockHttpxResponse({"detail": "Internal Server Error"}, status_code=500)
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
 
     engine = RealEngine(service_url="http://fake-model-service.com", api_key="test-key")
     with pytest.raises(HTTPException) as exc_info:
@@ -195,10 +154,10 @@ def test_real_engine_other_status_maps_to_friendly_502(monkeypatch):
 
 
 def test_real_engine_timeout_exception_maps_to_friendly_502(monkeypatch):
-    def fake_urlopen(req, timeout=None):
-        raise TimeoutError("Socket timed out")
+    def fake_post(self, url, **kwargs):
+        raise httpx.ReadTimeout("The read operation timed out")
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
 
     engine = RealEngine(service_url="http://fake-model-service.com", api_key="test-key")
     with pytest.raises(HTTPException) as exc_info:

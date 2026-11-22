@@ -1,12 +1,9 @@
 # Real inference engine communicating with remote CXR-LLaVA GPU model service.
-import json
 import os
-import urllib.error
-import urllib.request
-import uuid
 from typing import Any
 
 from fastapi import HTTPException, status
+import httpx
 
 from app.services.engines.base import ReportEngine
 
@@ -29,53 +26,40 @@ class RealEngine(ReportEngine):
         Never falls back to mock data.
         """
         target_url = f"{self.service_url}/generate"
-        boundary = f"----WebKitFormBoundary{uuid.uuid4().hex}"
-
+        files = {"file": ("xray.png", image_png_bytes, "image/png")}
         headers = {
-            "Content-Type": f"multipart/form-data; boundary={boundary}",
             "X-API-Key": self.api_key,
             "ngrok-skip-browser-warning": HEADER_NGROK_SKIP,
             "User-Agent": "XRayReportAI/1.0",
         }
 
-        body = (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="file"; filename="xray.png"\r\n'
-            f"Content-Type: image/png\r\n\r\n"
-        ).encode("utf-8") + image_png_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
-
-        req = urllib.request.Request(target_url, data=body, headers=headers)
-
         try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            # Map specific status codes from remote model service to friendly messages
-            if exc.code == 503:
-                msg = "The AI model is out of memory or still loading. Try again in a minute."
-            elif exc.code == 504:
-                msg = "The AI model took too long."
-            elif exc.code == 401:
-                msg = "The model service key is wrong."
-            else:
-                msg = "The AI model service encountered an unexpected error."
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=msg,
-            ) from exc
-        except (TimeoutError, urllib.error.URLError, Exception) as exc:
-            # Check for socket/network timeout
-            is_timeout = isinstance(exc, TimeoutError) or (
-                isinstance(exc, urllib.error.URLError) and isinstance(getattr(exc, "reason", None), TimeoutError)
-            )
-            if is_timeout:
-                msg = "The AI model took too long."
-            else:
-                msg = "The AI model service encountered an unexpected error."
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=msg,
-            ) from exc
+            with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
+                resp = client.post(target_url, files=files, headers=headers)
+
+                # Map specific status codes from remote model service to friendly messages
+                if resp.status_code == 503:
+                    msg = "The AI model is out of memory or still loading. Try again in a minute."
+                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=msg)
+                elif resp.status_code == 504:
+                    msg = "The AI model took too long."
+                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=msg)
+                elif resp.status_code == 401:
+                    msg = "The model service key is wrong."
+                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=msg)
+                elif resp.is_error:
+                    msg = "The AI model service encountered an unexpected error."
+                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=msg)
+
+                data = resp.json()
+        except HTTPException:
+            raise
+        except httpx.TimeoutException as exc:
+            msg = "The AI model took too long."
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=msg) from exc
+        except Exception as exc:
+            msg = "The AI model service encountered an unexpected error."
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=msg) from exc
 
         return {
             "findings": data.get("findings", ""),
