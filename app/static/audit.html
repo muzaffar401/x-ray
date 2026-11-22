@@ -1,1 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audit Log - XRay Report AI</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
 
+  <!-- Mandatory Safety Banner -->
+  <div id="safety-banner" class="safety-banner">
+    ⚠️ <strong>AI-generated DRAFT. Must be reviewed and approved by a qualified radiologist. Not a final diagnosis.</strong>
+  </div>
+
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <span class="brand-icon">🛡️</span>
+        <h1>XRay Report AI — Audit Log</h1>
+      </div>
+      <div class="header-actions">
+        <a href="/" class="btn btn-sm btn-secondary" style="text-decoration: none;">← Back to App</a>
+        <span id="user-display" class="user-display text-muted"></span>
+        <button type="button" id="logout-btn" class="btn btn-sm btn-outline">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <section class="card">
+      <div class="history-header">
+        <div>
+          <h2 class="card-title" style="margin-bottom: 4px;">System Audit Activity (Latest 200)</h2>
+          <p class="text-muted" style="font-size: 0.85rem;">Tracks user authentication, report modifications, approvals, and system interactions.</p>
+        </div>
+        <button type="button" id="refresh-btn" class="btn btn-sm btn-outline">Refresh Log</button>
+      </div>
+
+      <div id="audit-alert" class="alert-box hidden" style="margin-top: 14px;"></div>
+
+      <div class="table-container" style="margin-top: 14px;">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Timestamp (UTC)</th>
+              <th>User ID</th>
+              <th>Action</th>
+              <th>Report ID</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="audit-tbody">
+            <tr>
+              <td colspan="6" class="text-center text-muted">Loading audit entries...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      const userDisplay = document.getElementById("user-display");
+      const logoutBtn = document.getElementById("logout-btn");
+      const refreshBtn = document.getElementById("refresh-btn");
+      const auditTbody = document.getElementById("audit-tbody");
+      const auditAlert = document.getElementById("audit-alert");
+
+      function showAlert(msg, isError = true) {
+        auditAlert.textContent = msg;
+        auditAlert.className = isError ? "alert-box alert-error" : "alert-box alert-success";
+        auditAlert.classList.remove("hidden");
+      }
+
+      // Check current user
+      try {
+        const meRes = await fetch("/api/auth/me");
+        if (!meRes.ok) {
+          window.location.href = "/login.html";
+          return;
+        }
+        const user = await meRes.json();
+        userDisplay.textContent = `👤 ${user.username} (${user.role})`;
+
+        if (user.role !== "admin") {
+          showAlert("Access denied: You must be an administrator to view the audit log.", true);
+          auditTbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Administrator privileges required.</td></tr>`;
+          return;
+        }
+      } catch (err) {
+        window.location.href = "/login.html";
+        return;
+      }
+
+      logoutBtn.addEventListener("click", async () => {
+        try {
+          await fetch("/api/auth/logout", { method: "POST" });
+        } finally {
+          window.location.href = "/login.html";
+        }
+      });
+
+      async function loadAuditLogs() {
+        try {
+          const res = await fetch("/api/audit");
+          if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.detail || "Failed to load audit logs.");
+          }
+          const logs = await res.json();
+          auditTbody.innerHTML = "";
+
+          if (logs.length === 0) {
+            auditTbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">No audit events recorded yet.</td></tr>`;
+            return;
+          }
+
+          logs.forEach((log) => {
+            const tr = document.createElement("tr");
+            const dateStr = new Date(log.timestamp).toLocaleString();
+            let actionBadge = "badge-draft";
+            if (log.action === "approved" || log.action === "login") {
+              actionBadge = "badge-approved";
+            } else if (log.action === "login_failed") {
+              actionBadge = "badge-mock";
+            }
+
+            tr.innerHTML = `
+              <td>#${log.id}</td>
+              <td>${dateStr}</td>
+              <td>${log.user_id !== null ? `User #${log.user_id}` : "<span class='text-muted'>—</span>"}</td>
+              <td><span class="badge ${actionBadge}">${escapeHtml(log.action)}</span></td>
+              <td>${log.report_id !== null ? `<a href="/#${log.report_id}">Report #${log.report_id}</a>` : "<span class='text-muted'>—</span>"}</td>
+              <td>${escapeHtml(log.details || "—")}</td>
+            `;
+            auditTbody.appendChild(tr);
+          });
+        } catch (err) {
+          showAlert(err.message, true);
+        }
+      }
+
+      function escapeHtml(str) {
+        if (!str) return "";
+        return str
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      refreshBtn.addEventListener("click", loadAuditLogs);
+      loadAuditLogs();
+    });
+  </script>
+</body>
+</html>

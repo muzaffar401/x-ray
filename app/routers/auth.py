@@ -9,6 +9,7 @@ from app.db import get_db
 from app.models import User
 from app.schemas import LoginRequest, UserRead
 from app.security import COOKIE_NAME, create_access_token, get_current_user, verify_password
+from app.services.audit import log_action
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -59,6 +60,7 @@ def login(
     user = db.query(User).filter(User.username == username).first()
     if not user or not verify_password(login_data.password, user.password_hash):
         _record_failed_attempt(username)
+        log_action(db, action="login_failed", user_id=user.id if user else None, details="Failed login attempt")
         # Check if this failure triggered lockout
         attempts = FAILED_ATTEMPTS.get(username, [])
         if len(attempts) >= MAX_FAILED_ATTEMPTS:
@@ -72,6 +74,7 @@ def login(
         )
 
     if not user.is_active:
+        log_action(db, action="login_failed", user_id=user.id, details="Inactive user login attempt")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is inactive.",
@@ -79,6 +82,7 @@ def login(
 
     # 3. Successful login - clear failures and issue cookie
     _clear_failed_attempts(username)
+    log_action(db, action="login", user_id=user.id, details="User logged in successfully")
 
     token = create_access_token(data={"sub": user.username, "user_id": user.id, "role": user.role})
     response.set_cookie(

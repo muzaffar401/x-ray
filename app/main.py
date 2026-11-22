@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.db import Base, engine
-from app.routers import auth, reports
+from app.routers import auth, audit, reports
 
 
 @asynccontextmanager
@@ -28,6 +28,7 @@ app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
 # Mount API routers
 app.include_router(auth.router)
+app.include_router(audit.router)
 app.include_router(reports.router)
 
 

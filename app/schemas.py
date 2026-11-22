@@ -40,3 +40,14 @@ class ReportRead(BaseModel):
     created_by: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AuditLogRead(BaseModel):
+    id: int
+    timestamp: datetime
+    user_id: Optional[int] = None
+    action: str
+    report_id: Optional[int] = None
+    details: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)

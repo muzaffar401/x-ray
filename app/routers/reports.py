@@ -13,6 +13,7 @@ from app.db import get_db
 from app.models import Report, User
 from app.schemas import ReportRead, ReportUpdate
 from app.security import get_current_user
+from app.services.audit import log_action
 from app.services.engines import get_engine
 from app.services.image_utils import to_png, validate_upload
 
@@ -84,6 +85,8 @@ async def create_report(
     db.commit()
     db.refresh(report)
 
+    log_action(db, action="created", user_id=current_user.id, report_id=report.id, details="Report created")
+
     return report
 
 
@@ -107,6 +110,7 @@ def get_report(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Report with id {report_id} not found.",
         )
+    log_action(db, action="viewed", user_id=current_user.id, report_id=report.id, details="Report viewed")
     return report
 
 
@@ -167,6 +171,7 @@ def update_report(
 
     db.commit()
     db.refresh(report)
+    log_action(db, action="edited", user_id=current_user.id, report_id=report.id, details="Report edited")
     return report
 
 
@@ -196,4 +201,5 @@ def approve_report(
 
     db.commit()
     db.refresh(report)
+    log_action(db, action="approved", user_id=current_user.id, report_id=report.id, details="Report approved")
     return report

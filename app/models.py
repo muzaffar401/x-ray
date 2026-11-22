@@ -1,4 +1,4 @@
-# SQLAlchemy ORM database models for radiology reports and users.
+# SQLAlchemy ORM database models for radiology reports, users, and audit logs.
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Boolean, Text, DateTime, ForeignKey
 from app.db import Base
@@ -46,3 +46,18 @@ class Report(Base):
     approved_at = Column(DateTime(timezone=True), nullable=True)
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    timestamp = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action = Column(String(32), nullable=False)  # created, viewed, edited, approved, pdf_exported, login, login_failed
+    report_id = Column(Integer, ForeignKey("reports.id"), nullable=True)
+    details = Column(String(255), nullable=True)
