@@ -1,4 +1,4 @@
-# Radiology report generation, review, and approval route handlers.
+# Radiology report generation, review, and approval route handlers with auth protection.
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
-from app.models import Report
+from app.models import Report, User
 from app.schemas import ReportRead, ReportUpdate
+from app.security import get_current_user
 from app.services.engines import get_engine
 from app.services.image_utils import to_png, validate_upload
 
@@ -21,6 +22,7 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 @router.post("", response_model=ReportRead, status_code=status.HTTP_201_CREATED)
 async def create_report(
     file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Report:
     original_filename = file.filename or "uploaded_image.png"
@@ -51,7 +53,7 @@ async def create_report(
             detail=f"Failed to process image into standard PNG format: {exc}",
         ) from exc
 
-    # 3. Save PNG in UPLOAD_DIR using a random UUID filename (never the user filename)
+    # 3. Save PNG in UPLOAD_DIR using a random UUID filename (never user filename)
     random_filename = f"{uuid.uuid4().hex}.png"
     target_path = Path(settings.UPLOAD_DIR) / random_filename
     target_path.write_bytes(png_bytes)
@@ -63,7 +65,7 @@ async def create_report(
     ai_findings = engine_output["findings"]
     ai_impression = engine_output["impression"]
 
-    # 5. Save database row with initial copies in final_* fields
+    # 5. Save database row with initial copies in final_* fields and user attribution
     report = Report(
         image_path=str(target_path.resolve()),
         original_filename=original_filename,
@@ -75,6 +77,7 @@ async def create_report(
         final_impression=ai_impression,
         status="draft",
         approved_at=None,
+        created_by=current_user.id,
     )
 
     db.add(report)
@@ -85,12 +88,19 @@ async def create_report(
 
 
 @router.get("", response_model=List[ReportRead])
-def list_reports(db: Session = Depends(get_db)) -> List[Report]:
+def list_reports(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[Report]:
     return db.query(Report).order_by(Report.created_at.desc()).all()
 
 
 @router.get("/{report_id}", response_model=ReportRead)
-def get_report(report_id: int, db: Session = Depends(get_db)) -> Report:
+def get_report(
+    report_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Report:
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(
@@ -101,7 +111,11 @@ def get_report(report_id: int, db: Session = Depends(get_db)) -> Report:
 
 
 @router.get("/{report_id}/image")
-def get_report_image(report_id: int, db: Session = Depends(get_db)) -> FileResponse:
+def get_report_image(
+    report_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FileResponse:
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(
@@ -123,6 +137,7 @@ def get_report_image(report_id: int, db: Session = Depends(get_db)) -> FileRespo
 def update_report(
     report_id: int,
     update_data: ReportUpdate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Report:
     report = db.query(Report).filter(Report.id == report_id).first()
@@ -130,6 +145,13 @@ def update_report(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Report with id {report_id} not found.",
+        )
+
+    # Only creator doctor or admin can edit
+    if current_user.role != "admin" and report.created_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to edit this report.",
         )
 
     # Edits are strictly forbidden if already approved
@@ -149,12 +171,23 @@ def update_report(
 
 
 @router.post("/{report_id}/approve", response_model=ReportRead)
-def approve_report(report_id: int, db: Session = Depends(get_db)) -> Report:
+def approve_report(
+    report_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Report:
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Report with id {report_id} not found.",
+        )
+
+    # Only creator doctor or admin can approve
+    if current_user.role != "admin" and report.created_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to approve this report.",
         )
 
     report.status = "approved"

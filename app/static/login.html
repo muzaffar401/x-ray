@@ -1,1 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - XRay Report AI</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .login-wrapper {
+      max-width: 420px;
+      margin: 60px auto;
+      padding: 0 16px;
+    }
+    .login-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 30px 24px;
+      box-shadow: var(--shadow-md);
+    }
+    .login-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--primary);
+      text-align: center;
+      margin-bottom: 6px;
+    }
+    .login-subtitle {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .form-actions {
+      margin-top: 20px;
+    }
+    .btn-block {
+      width: 100%;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
 
+  <!-- Mandatory Safety Banner -->
+  <div id="safety-banner" class="safety-banner">
+    ⚠️ <strong>AI-generated DRAFT. Must be reviewed and approved by a qualified radiologist. Not a final diagnosis.</strong>
+  </div>
+
+  <main class="login-wrapper">
+    <div class="login-card">
+      <div class="brand-icon text-center" style="font-size: 2.4rem; margin-bottom: 8px;">🫁</div>
+      <h1 class="login-title">XRay Report AI</h1>
+      <p class="login-subtitle">Sign in to review and approve radiology reports</p>
+
+      <div id="login-alert" class="alert-box hidden" style="margin-bottom: 16px;"></div>
+
+      <form id="login-form">
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label for="username" class="form-label"><strong>Username</strong></label>
+          <input type="text" id="username" class="form-textarea" style="height: 42px;" placeholder="e.g. dr_ali" required autofocus>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label for="password" class="form-label"><strong>Password</strong></label>
+          <input type="password" id="password" class="form-textarea" style="height: 42px;" placeholder="Enter password" required>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" id="submit-btn" class="btn btn-primary btn-block">Sign In</button>
+        </div>
+      </form>
+    </div>
+  </main>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      // If already logged in, redirect directly to dashboard
+      try {
+        const check = await fetch("/api/auth/me");
+        if (check.ok) {
+          window.location.href = "/";
+          return;
+        }
+      } catch (e) {}
+
+      const loginForm = document.getElementById("login-form");
+      const usernameInput = document.getElementById("username");
+      const passwordInput = document.getElementById("password");
+      const submitBtn = document.getElementById("submit-btn");
+      const loginAlert = document.getElementById("login-alert");
+
+      function showAlert(msg, isError = true) {
+        loginAlert.textContent = msg;
+        loginAlert.className = isError ? "alert-box alert-error" : "alert-box alert-success";
+        loginAlert.classList.remove("hidden");
+      }
+
+      loginForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        loginAlert.classList.add("hidden");
+
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value;
+
+        if (!username || !password) {
+          showAlert("Please enter both username and password.");
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Signing in...";
+
+        try {
+          const res = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password })
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            throw new Error(data.detail || "Authentication failed.");
+          }
+
+          showAlert("Sign in successful! Redirecting...", false);
+          setTimeout(() => {
+            window.location.href = "/";
+          }, 400);
+        } catch (err) {
+          showAlert(err.message);
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Sign In";
+        }
+      });
+    });
+  </script>
+</body>
+</html>

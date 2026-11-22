@@ -1,7 +1,17 @@
-# SQLAlchemy ORM database models for radiology reports.
+# SQLAlchemy ORM database models for radiology reports and users.
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Boolean, Text, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, Text, DateTime, ForeignKey
 from app.db import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    username = Column(String(64), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(32), default="doctor", nullable=False)  # "doctor" or "admin"
+    is_active = Column(Boolean, default=True, nullable=False)
 
 
 class Report(Base):
@@ -34,3 +44,5 @@ class Report(Base):
 
     status = Column(String(32), default="draft", nullable=False)  # "draft" or "approved"
     approved_at = Column(DateTime(timezone=True), nullable=True)
+
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)

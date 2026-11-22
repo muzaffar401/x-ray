@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./data/uploads"
     MAX_UPLOAD_MB: int = 20
     ENGINE: str = "mock"
+    SECRET_KEY: str = "change-this-in-production-to-a-secure-random-secret"
 
     model_config = SettingsConfigDict(
         env_file=".env",

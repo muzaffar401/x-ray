@@ -8,3 +8,5 @@ pydicom
 reportlab
 pytest
 httpx
+bcrypt
+pyjwt

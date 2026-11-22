@@ -1,6 +1,34 @@
-// Plain vanilla JavaScript for XRay Report AI frontend
-document.addEventListener("DOMContentLoaded", () => {
+// Plain vanilla JavaScript for XRay Report AI frontend with auth protection
+document.addEventListener("DOMContentLoaded", async () => {
+  let currentUser = null;
   let currentReport = null;
+
+  // Header Elements
+  const userDisplay = document.getElementById("user-display");
+  const logoutBtn = document.getElementById("logout-btn");
+
+  // Auth Guard: verify current user
+  try {
+    const authRes = await fetch("/api/auth/me");
+    if (!authRes.ok) {
+      window.location.href = "/login.html";
+      return;
+    }
+    currentUser = await authRes.json();
+    userDisplay.textContent = `👤 ${currentUser.username} (${currentUser.role})`;
+  } catch (err) {
+    window.location.href = "/login.html";
+    return;
+  }
+
+  // Logout Handler
+  logoutBtn.addEventListener("click", async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      window.location.href = "/login.html";
+    }
+  });
 
   // DOM Elements
   const dropzone = document.getElementById("dropzone");
@@ -91,6 +119,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 401) {
+          window.location.href = "/login.html";
+          return;
+        }
         throw new Error(data.detail || "Upload failed. Please check file format and try again.");
       }
 
@@ -132,11 +164,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     statusBadge.classList.remove("hidden");
-    if (report.status === "approved") {
+    const isApproved = report.status === "approved";
+    const canEdit = currentUser && (currentUser.role === "admin" || report.created_by === currentUser.id);
+
+    if (isApproved) {
       statusBadge.textContent = "Approved";
       statusBadge.className = "badge badge-approved";
 
-      // Read-only locking
       findingsInput.readOnly = true;
       impressionInput.readOnly = true;
       saveBtn.disabled = true;
@@ -146,12 +180,15 @@ document.addEventListener("DOMContentLoaded", () => {
       statusBadge.textContent = "Draft";
       statusBadge.className = "badge badge-draft";
 
-      // Editable mode
-      findingsInput.readOnly = false;
-      impressionInput.readOnly = false;
-      saveBtn.disabled = false;
-      approveBtn.disabled = false;
+      findingsInput.readOnly = !canEdit;
+      impressionInput.readOnly = !canEdit;
+      saveBtn.disabled = !canEdit;
+      approveBtn.disabled = !canEdit;
       approvedNotice.classList.add("hidden");
+
+      if (!canEdit) {
+        showAlert("Viewing report created by another doctor (read-only).", "error");
+      }
     }
 
     highlightActiveRow(report.id);
@@ -220,7 +257,13 @@ document.addEventListener("DOMContentLoaded", () => {
   async function loadHistory() {
     try {
       const response = await fetch("/api/reports");
-      if (!response.ok) throw new Error("Failed to load reports history.");
+      if (!response.ok) {
+        if (response.status === 401) {
+          window.location.href = "/login.html";
+          return;
+        }
+        throw new Error("Failed to load reports history.");
+      }
 
       const reports = await response.json();
       historyTableBody.innerHTML = "";
@@ -301,6 +344,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   refreshHistoryBtn.addEventListener("click", loadHistory);
 
-  // Initialize
+  // Initialize history after auth check
   loadHistory();
 });
