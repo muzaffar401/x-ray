@@ -44,6 +44,7 @@ Never use this service for direct clinical decisions or real patient data.
 
 3. **Install Dependencies:**
    ```bash
+   !pip install "transformers<4.40.0"
    !pip install -r requirements.txt
    !pip install pyngrok uvicorn
    ```
