@@ -63,18 +63,29 @@ def load_cxr_model() -> None:
     except Exception:
         pass
 
+    # Set PyTorch allocation conf to avoid memory fragmentation
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Load model: prefer direct dynamic module instantiation to avoid auto-factory registration quirks
+    # Load model in half-precision (float16) to fit comfortably within GPU VRAM
+    load_kwargs = {
+        "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
+    }
+    if torch.cuda.is_available():
+        load_kwargs["device_map"] = "auto"
+
     try:
         from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
         model_cls = get_class_from_dynamic_module("CXR_LLAVA_HF.CXRLLAVAModel", MODEL_NAME)
-        model = model_cls.from_pretrained(MODEL_NAME)
+        model = model_cls.from_pretrained(MODEL_NAME, **load_kwargs)
     except Exception:
-        model = AutoModel.from_pretrained(MODEL_NAME, trust_remote_code=True)
+        model = AutoModel.from_pretrained(MODEL_NAME, trust_remote_code=True, **load_kwargs)
 
-    model = model.to(device)
+    if "device_map" not in load_kwargs:
+        model = model.to(device)
+    model.eval()
     model.eval()
 
     model_state["model"] = model
@@ -161,13 +172,16 @@ def _run_model_inference(pil_image: Image.Image) -> str:
     ]
 
     try:
-        # Preferred: official high-level helper
-        if hasattr(model, "write_radiologic_report"):
-            return model.write_radiologic_report(pil_image)
-        # Fallback: custom chat interface (note: argument is image=, not pil_image=)
-        if hasattr(model, "generate_cxr_repsonse"):
-            return model.generate_cxr_repsonse(chat=chat, image=pil_image, temperature=0.2, top_p=0.8)
-        raise RuntimeError("Model does not expose expected inference methods.")
+        import torch
+
+        with torch.inference_mode():
+            # Preferred: official high-level helper
+            if hasattr(model, "write_radiologic_report"):
+                return model.write_radiologic_report(pil_image)
+            # Fallback: custom chat interface (note: argument is image=, not pil_image=)
+            if hasattr(model, "generate_cxr_repsonse"):
+                return model.generate_cxr_repsonse(chat=chat, image=pil_image, temperature=0.2, top_p=0.8)
+            raise RuntimeError("Model does not expose expected inference methods.")
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
