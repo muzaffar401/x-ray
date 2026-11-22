@@ -67,24 +67,19 @@ def load_cxr_model() -> None:
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # Load model in half-precision (float16) to fit comfortably within GPU VRAM
-    load_kwargs = {
-        "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
-    }
-    if torch.cuda.is_available():
-        load_kwargs["device_map"] = "auto"
+    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
     try:
         from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
         model_cls = get_class_from_dynamic_module("CXR_LLAVA_HF.CXRLLAVAModel", MODEL_NAME)
-        model = model_cls.from_pretrained(MODEL_NAME, **load_kwargs)
+        # Enable module splitting support
+        model_cls._no_split_modules = ["LlamaDecoderLayer"]
+        model = model_cls.from_pretrained(MODEL_NAME, torch_dtype=dtype)
     except Exception:
-        model = AutoModel.from_pretrained(MODEL_NAME, trust_remote_code=True, **load_kwargs)
+        model = AutoModel.from_pretrained(MODEL_NAME, trust_remote_code=True, torch_dtype=dtype)
 
-    if "device_map" not in load_kwargs:
-        model = model.to(device)
+    model = model.to(device)
     model.eval()
     model.eval()
 
