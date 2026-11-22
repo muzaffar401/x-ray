@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = 20
     ENGINE: str = "mock"
     SECRET_KEY: str = "change-this-in-production-to-a-secure-random-secret"
+    MODEL_SERVICE_URL: str = ""
+    MODEL_SERVICE_KEY: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

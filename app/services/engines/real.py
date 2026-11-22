@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import HTTPException, status
 import httpx
 
+from app.config import settings
 from app.services.engines.base import ReportEngine
 
 TIMEOUT_SECONDS = 180.0
@@ -15,9 +16,9 @@ class RealEngine(ReportEngine):
     """Inference engine delegating report generation to the external GPU model service."""
 
     def __init__(self, service_url: str | None = None, api_key: str | None = None) -> None:
-        raw_url = service_url or os.getenv("MODEL_SERVICE_URL", "http://127.0.0.1:8000")
+        raw_url = service_url or getattr(settings, "MODEL_SERVICE_URL", "") or os.getenv("MODEL_SERVICE_URL", "http://127.0.0.1:8000")
         self.service_url = raw_url.rstrip("/")
-        self.api_key = api_key if api_key is not None else os.getenv("MODEL_SERVICE_KEY", "")
+        self.api_key = api_key if api_key is not None else (getattr(settings, "MODEL_SERVICE_KEY", "") or os.getenv("MODEL_SERVICE_KEY", ""))
 
     def generate(self, image_png_bytes: bytes) -> dict[str, Any]:
         """Send chest X-ray PNG bytes to the remote model service and parse the report.
