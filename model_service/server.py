@@ -34,7 +34,7 @@ def load_cxr_model() -> None:
     import transformers
     from transformers import AutoModel
 
-    # Compatibility patch: CXR-LLaVA's remote code passes add_special_tokens=False
+    # Compatibility patch 1: CXR-LLaVA's remote code passes add_special_tokens=False
     # to LlamaTokenizer.from_pretrained, which newer transformers versions reject as a method conflict.
     if hasattr(transformers, "LlamaTokenizer"):
         _orig_llama_from_pretrained = transformers.LlamaTokenizer.from_pretrained
@@ -45,9 +45,35 @@ def load_cxr_model() -> None:
 
         transformers.LlamaTokenizer.from_pretrained = _patched_llama_from_pretrained
 
+    # Compatibility patch 2: Bypass AutoModel auto_factory class identity check for duplicate dynamic imports
+    try:
+        from transformers.models.auto.auto_factory import _BaseAutoModelClass
+
+        _orig_register = _BaseAutoModelClass.register
+
+        def _safe_register(cls, config_class, model_class, exist_ok=False):
+            try:
+                return _orig_register(config_class, model_class, exist_ok=True)
+            except ValueError as err:
+                if "config_class" in str(err):
+                    return None
+                raise err
+
+        _BaseAutoModelClass.register = classmethod(_safe_register)
+    except Exception:
+        pass
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    # Load model using official repository identifier and trust_remote_code=True
-    model = AutoModel.from_pretrained(MODEL_NAME, trust_remote_code=True)
+
+    # Load model: prefer direct dynamic module instantiation to avoid auto-factory registration quirks
+    try:
+        from transformers.dynamic_module_utils import get_class_from_dynamic_module
+
+        model_cls = get_class_from_dynamic_module("CXR_LLAVA_HF.CXRLLAVAModel", MODEL_NAME)
+        model = model_cls.from_pretrained(MODEL_NAME)
+    except Exception:
+        model = AutoModel.from_pretrained(MODEL_NAME, trust_remote_code=True)
+
     model = model.to(device)
     model.eval()
 
